@@ -1,0 +1,13 @@
+= WIP
+
+The new infrastructure of cjprods.org services.
+
+.Technical Features
+* Designed for Arch Linux servers
+* Use `systemd-nspawn` for isolation
+* Use `btrfs` for data deduplication and backup
+
+.General Goal
+* Code as infrastructure
+* Secret management (ssh host keys, passwords for various services, ...)
+
