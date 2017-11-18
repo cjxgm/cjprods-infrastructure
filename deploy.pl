@@ -100,29 +100,29 @@ my $DATA_ROOT = "/data";
 my $NSPAWN_ROOT = path::of_nspawn_dir();
 my $undeploy_script = "$BAWN_ROOT/undeploy.sh";
 
-my $template = "master-" . localtime->datetime =~ s{[^a-zA-Z0-9_-]}{_}rg;
-$template .= "a" while -e path::of_machine($template);
+my $master = "master-" . localtime->datetime =~ s{[^a-zA-Z0-9_-]}{_}rg;
+$master .= "a" while -e path::of_machine($master);
 
 util::run("bash", $undeploy_script) if -f $undeploy_script;
 mkdir $BAWN_ROOT unless -d $BAWN_ROOT;
 mkdir $DATA_ROOT unless -d $DATA_ROOT;
 mkdir $NSPAWN_ROOT unless -d $NSPAWN_ROOT;
 
-print STDERR "\e[1;32mBootstrapping template...\e[0m\n";
-my $machine_tmpl = path::of_machine($template);
-my $nspawn_tmpl = path::of_nspawn($template);
-util::system::create_subvolume($machine_tmpl);
-util::spurt($nspawn_tmpl, util::system::nspawn_script());
-util::system::bootstrap($machine_tmpl, qw[systemd bash perl]);
+print STDERR "\e[1;32mBootstrapping master...\e[0m\n";
+my $machine_master = path::of_machine($master);
+my $nspawn_master = path::of_nspawn($master);
+util::system::create_subvolume($machine_master);
+util::spurt($nspawn_master, util::system::nspawn_script());
+util::system::bootstrap($machine_master, qw[systemd bash perl]);
 
 # No sane person should be using securetty.
 # Let's get rid of this ancient garbage.
-unlink "$machine_tmpl/etc/securetty";
+unlink "$machine_master/etc/securetty";
 
 # Systemd creates a subvolume automatically.
 # Let's replace it with a normal directory.
-util::system::delete_subvolume(path::of_machine_dir($machine_tmpl));
-mkdir path::of_machine_dir($machine_tmpl);
+util::system::delete_subvolume(path::of_machine_dir($machine_master));
+mkdir path::of_machine_dir($machine_master);
 
 my %machines = (
     acme => {
@@ -135,10 +135,10 @@ my %machines = (
         packages => [qw[nginx fcgi]],
     },
 );
-deploy::machine($machine_tmpl, $_, $machines{$_}) for sort keys %machines;
-deploy::enable_service($machine_tmpl, map { "systemd-nspawn\@$_" } sort keys %machines);
+deploy::machine($machine_master, $_, $machines{$_}) for sort keys %machines;
+deploy::enable_service($machine_master, map { "systemd-nspawn\@$_" } sort keys %machines);
 
-print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $template` to start it.\e[0m\n";
+print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $master` to start it.\e[0m\n";
 
 package sanity
 {
@@ -176,14 +176,14 @@ package deploy
 
     sub machine($$$)
     {
-        my ($tmpl_subvol, $name, $config) = @_;
+        my ($master_subvol, $name, $config) = @_;
         print STDERR "\e[1;32mDeploying $name...\e[0m\n";
 
         $config->{packages} //= [];
         $config->{services} //= [];
 
-        my $machine_path = path::of_machine($name, $tmpl_subvol);
-        util::system::create_subvolume($machine_path, $tmpl_subvol);
+        my $machine_path = path::of_machine($name, $master_subvol);
+        util::system::create_subvolume($machine_path, $master_subvol);
         util::system::bootstrap($machine_path, @{$config->{packages}});
         enable_service($machine_path, @{$config->{services}});
 
