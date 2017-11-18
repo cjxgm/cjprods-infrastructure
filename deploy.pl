@@ -138,7 +138,7 @@ my %machines = (
 deploy::machine($machine_tmpl, $_, $machines{$_}) for sort keys %machines;
 deploy::enable_service($machine_tmpl, map { "systemd-nspawn\@$_" } sort keys %machines);
 
-print STDERR "\e[1;32mDeployment done.\nYou may want to `machinectl start $template` to start it.\e[0m";
+print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $template` to start it.\e[0m\n";
 
 package sanity
 {
