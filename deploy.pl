@@ -90,21 +90,14 @@ sanity::check();
 util::system::install qw[
     coreutils
     arch-install-scripts
-    gnupg
+    p7zip
     btrfs-progs
     systemd
     bash
 ];
 
-my $BAWN_ROOT = "/opt/bawn";
-my $DATA_ROOT = "/data";
-my $NSPAWN_ROOT = path::of_nspawn_dir();
-my $undeploy_script = "$BAWN_ROOT/undeploy.sh";
-
-util::run("bash", $undeploy_script) if -f $undeploy_script;
-mkdir $BAWN_ROOT unless -d $BAWN_ROOT;
-mkdir $DATA_ROOT unless -d $DATA_ROOT;
-mkdir $NSPAWN_ROOT unless -d $NSPAWN_ROOT;
+util::run qw[rm -rf secrets];
+util::system::un7zip "secrets.7z" if -f "secrets.7z";
 
 my %machines = (
     master => {
@@ -147,6 +140,8 @@ mkdir $master_machine_dir;
 deploy::machine($master_root, $_, $machines{$_}) for @slaves;
 deploy::enable_service($master_root, map { "systemd-nspawn\@$_" } @slaves);
 deploy::enable_service($master_root, "machines.target");
+
+util::run qw[rm -rf secrets];
 
 print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $master` to start it.\e[0m\n";
 
@@ -344,6 +339,11 @@ package util::system
     sub delete_subvolume($)
     {
         util::run qw[btrfs sub delete], $_[0];
+    }
+
+    sub un7zip($)
+    {
+        util::run qw[7z x], $_[0];
     }
 
     sub nspawn_script(%)
