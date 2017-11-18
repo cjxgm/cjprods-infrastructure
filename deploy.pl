@@ -129,6 +129,7 @@ my %machines = (
     },
 );
 deploy::machine($machine_tmpl, $_, $machines{$_}) for sort keys %machines;
+deploy::enable_service($machine_tmpl, map { "systemd-nspawn\@$_" } sort keys %machines);
 
 package sanity
 {
@@ -154,10 +155,28 @@ package sanity
 
 package deploy
 {
+    use path;
+    use util::system;
+
+    sub enable_service($@)
+    {
+        my ($root, @services) = @_;
+        return unless @services;
+        util::system::chroot($root, qw[systemctl enable], @services);
+    }
+
     sub machine($$$)
     {
         my ($tmpl_subvol, $name, $config) = @_;
         print STDERR "\e[1;32mDeploying $name...\e[0m\n";
+
+        $config->{packages} //= [];
+        $config->{services} //= [];
+
+        my $machine_path = path::of_machine($name, $tmpl_subvol);
+        util::system::create_subvolume($machine_path, $tmpl_subvol);
+        util::system::bootstrap($machine_path, @{$config->{packages}});
+        enable_service($machine_path, @{$config->{services}});
     }
 }
 
@@ -238,6 +257,12 @@ package util::system
     {
         my ($dir, @args) = @_;
         util::run qw[pacstrap -cd], $dir, "--needed", @args;
+    }
+
+    sub chroot($@)
+    {
+        my ($root, @cmd) = @_;
+        util::run qw[arch-chroot], $root, @cmd;
     }
 
     sub create_subvolume($@)
