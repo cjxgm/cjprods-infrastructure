@@ -130,6 +130,7 @@ delete $machines{master};
 my @slaves = sort keys %machines;
 
 my $master_root = deploy::machine(undef, $master, $master_config);
+util::spurt("$master_root/undeploy.sh", deploy::undo_script($master, @slaves));
 
 # systemd creates a subvolume automatically.
 # Let's replace it with a normal directory.
@@ -202,6 +203,25 @@ package deploy
         unlink "$root/etc/securetty";
 
         return $root;
+    }
+
+    sub undo_script($@)
+    {
+        my ($master, @slaves) = @_;
+        my $master_root = path::of_machine($master);
+        my $master_nspawn = path::of_nspawn($master);
+        my @slave_roots = map { path::of_machine($_, $master_root) } @slaves;
+        my @lines = (
+            qq{echo -e "\\e[1;32mStopping $master\\e[0m..."},
+            "systemctl stop systemd-nspawn\@$master",
+            qq{echo -e "\\e[1;32mRemoving $master\\e[0m..."},
+            (map { "btrfs sub delete $_" } @slave_roots, $master_root),
+            qq{echo -e "\\e[1;32mRemoving nspawn config of $master\\e[0m..."},
+            qq{rm -f "$master_nspawn"},
+            qq{echo -e "\\e[1;32mUndeployed $master\\e[0m."},
+            "", "",
+        );
+        return join "\n", @lines;
     }
 }
 
