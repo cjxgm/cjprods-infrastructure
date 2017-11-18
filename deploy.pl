@@ -57,7 +57,7 @@ BEGIN {
             my ($pkgs, $order) = @_;
             my @src = (
                 (map {
-                    my $filename = s{::}{/}r . ".pm";
+                    my $filename = s{::}{/}rg . ".pm";
                     qq<BEGIN { \$INC{"$filename"} = 1 }>;
                 } @$order),
                 (map { $pkgs->{$_}[1] . "\n" } @$order),
@@ -100,7 +100,7 @@ my $DATA_ROOT = "/data";
 my $NSPAWN_ROOT = path::of_nspawn_dir();
 my $undeploy_script = "$BAWN_ROOT/undeploy.sh";
 
-my $template = "arch-" . localtime->ymd;
+my $template = "master-" . localtime->datetime =~ s{[^a-zA-Z0-9_-]}{_}rg;
 $template .= "a" while -e path::of_machine($template);
 
 util::run("bash", $undeploy_script) if -f $undeploy_script;
