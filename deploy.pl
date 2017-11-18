@@ -100,31 +100,15 @@ my $DATA_ROOT = "/data";
 my $NSPAWN_ROOT = path::of_nspawn_dir();
 my $undeploy_script = "$BAWN_ROOT/undeploy.sh";
 
-my $master = "master-" . localtime->datetime =~ s{[^a-zA-Z0-9_-]}{_}rg;
-$master .= "a" while -e path::of_machine($master);
-
 util::run("bash", $undeploy_script) if -f $undeploy_script;
 mkdir $BAWN_ROOT unless -d $BAWN_ROOT;
 mkdir $DATA_ROOT unless -d $DATA_ROOT;
 mkdir $NSPAWN_ROOT unless -d $NSPAWN_ROOT;
 
-print STDERR "\e[1;32mBootstrapping master...\e[0m\n";
-my $machine_master = path::of_machine($master);
-my $nspawn_master = path::of_nspawn($master);
-util::system::create_subvolume($machine_master);
-util::spurt($nspawn_master, util::system::nspawn_script());
-util::system::bootstrap($machine_master, qw[systemd bash perl]);
-
-# No sane person should be using securetty.
-# Let's get rid of this ancient garbage.
-unlink "$machine_master/etc/securetty";
-
-# Systemd creates a subvolume automatically.
-# Let's replace it with a normal directory.
-util::system::delete_subvolume(path::of_machine_dir($machine_master));
-mkdir path::of_machine_dir($machine_master);
-
 my %machines = (
+    master => {
+        packages => [qw[systemd bash perl]],
+    },
     acme => {
         packages => [qw[nginx certbot certbot-nginx]],
     },
@@ -135,9 +119,27 @@ my %machines = (
         packages => [qw[nginx fcgi]],
     },
 );
-deploy::machine($machine_master, $_, $machines{$_}) for sort keys %machines;
-deploy::enable_service($machine_master, map { "systemd-nspawn\@$_" } sort keys %machines);
-deploy::enable_service($machine_master, "machines.target");
+
+die "There must be a machine called master.\n" unless exists $machines{master};
+
+my $master = "master-" . localtime->datetime =~ s{[^a-zA-Z0-9_-]}{_}rg;
+$master .= "a" while -e path::of_machine($master);
+
+my $master_config = $machines{master};
+delete $machines{master};
+my @slaves = sort keys %machines;
+
+my $master_root = deploy::machine(undef, $master, $master_config);
+
+# systemd creates a subvolume automatically.
+# Let's replace it with a normal directory.
+my $master_machine_dir = path::of_machine_dir($master_root);
+util::system::delete_subvolume($master_machine_dir);
+mkdir $master_machine_dir;
+
+deploy::machine($master_root, $_, $machines{$_}) for @slaves;
+deploy::enable_service($master_root, map { "systemd-nspawn\@$_" } @slaves);
+deploy::enable_service($master_root, "machines.target");
 
 print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $master` to start it.\e[0m\n";
 
@@ -166,6 +168,7 @@ package sanity
 package deploy
 {
     use path;
+    use util;
     use util::system;
 
     sub enable_service($@)
@@ -182,15 +185,23 @@ package deploy
 
         $config->{packages} //= [];
         $config->{services} //= [];
+        $config->{spawning} //= {};
 
-        my $machine_path = path::of_machine($name, $master_subvol);
-        util::system::create_subvolume($machine_path, $master_subvol);
-        util::system::bootstrap($machine_path, @{$config->{packages}});
-        enable_service($machine_path, @{$config->{services}});
+        my $root = path::of_machine($name, $master_subvol);
+        util::system::create_subvolume($root, $master_subvol);
+        util::system::bootstrap($root, @{$config->{packages}});
+        enable_service($root, @{$config->{services}});
+
+        my $nspawn_path = path::of_nspawn($name, $master_subvol);
+        util::spurt($nspawn_path, util::system::nspawn_script(%{$config->{spawning}}));
+
+        mkdir path::of_nspawn_dir($root);
 
         # No sane person should be using securetty.
         # Let's get rid of this ancient garbage.
-        unlink "$machine_path/etc/securetty";
+        unlink "$root/etc/securetty";
+
+        return $root;
     }
 }
 
