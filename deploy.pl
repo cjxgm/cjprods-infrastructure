@@ -304,7 +304,7 @@ package util::system
 
     sub install(@)
     {
-        util::run qw[pacman -S --needed], @_;
+        util::run qw[pacman -S --needed --noconfirm], @_;
     }
 
     sub bootstrap($@)
