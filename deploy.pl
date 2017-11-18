@@ -88,6 +88,7 @@ use deploy;
 
 sanity::check();
 util::system::install qw[
+    coreutils
     arch-install-scripts
     gnupg
     btrfs-progs
@@ -117,6 +118,11 @@ my %machines = (
     },
     ikiwiki => {
         packages => [qw[nginx fcgi]],
+    },
+    gitolite => {
+        packages => [qw[openssh gitolite git]],
+        services => [qw[sshd]],
+        setup => "setup/gitolite",
     },
 );
 
@@ -201,6 +207,12 @@ package deploy
         # No sane person should be using securetty.
         # Let's get rid of this ancient garbage.
         unlink "$root/etc/securetty";
+
+        if (defined(my $setup = $config->{setup})) {
+            util::run(qw[cp -r], $setup, "$root/setup");
+            util::system::chroot($root, qw[bash -c], 'cd /setup; source setup.sh');
+            util::run(qw[rm -rf], "$root/setup");
+        }
 
         return $root;
     }
