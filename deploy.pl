@@ -204,6 +204,8 @@ package deploy
 
         mkdir path::of_nspawn_dir($root);
 
+        util::system::regenerate_machine_id($root);
+
         # No sane person should be using securetty.
         # Let's get rid of this ancient garbage.
         unlink "$root/etc/securetty";
@@ -320,6 +322,13 @@ package util::system
     {
         my ($root, @cmd) = @_;
         util::run qw[arch-chroot], $root, @cmd;
+    }
+
+    sub regenerate_machine_id($)
+    {
+        my ($root) = @_;
+        unlink "$root/etc/machine-id";
+        util::run qw[systemd-firstboot --setup-machine-id], "--root=$root";
     }
 
     sub create_subvolume($@)
