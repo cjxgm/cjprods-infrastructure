@@ -137,6 +137,7 @@ my %machines = (
 );
 deploy::machine($machine_master, $_, $machines{$_}) for sort keys %machines;
 deploy::enable_service($machine_master, map { "systemd-nspawn\@$_" } sort keys %machines);
+deploy::enable_service($machine_master, "machines.target");
 
 print STDERR "\e[1;32mDeployment done.\nYou may want to run `machinectl start $master` to start it.\e[0m\n";
 
