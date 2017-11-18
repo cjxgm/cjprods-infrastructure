@@ -114,6 +114,13 @@ my $nspawn_tmpl = path::of_nspawn($template);
 util::system::create_subvolume($machine_tmpl);
 util::spurt($nspawn_tmpl, util::system::nspawn_script());
 util::system::bootstrap($machine_tmpl, qw[systemd bash perl]);
+
+# No sane person should be using securetty.
+# Let's get rid of this ancient garbage.
+unlink "$machine_tmpl/etc/securetty";
+
+# Systemd creates a subvolume automatically.
+# Let's replace it with a normal directory.
 util::system::delete_subvolume(path::of_machine_dir($machine_tmpl));
 mkdir path::of_machine_dir($machine_tmpl);
 
@@ -177,6 +184,10 @@ package deploy
         util::system::create_subvolume($machine_path, $tmpl_subvol);
         util::system::bootstrap($machine_path, @{$config->{packages}});
         enable_service($machine_path, @{$config->{services}});
+
+        # No sane person should be using securetty.
+        # Let's get rid of this ancient garbage.
+        unlink "$machine_path/etc/securetty";
     }
 }
 
