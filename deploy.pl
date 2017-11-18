@@ -283,11 +283,12 @@ package util::system
     sub nspawn_script(%)
     {
         my %opts = @_;
-        my $private_network = $opts{private_network} ? "Yes" : "No";
+        my $private_network = $opts{private_network} ? "yes" : "no";
         return <<~END;
             [Exec]
             Boot=yes
             PrivateUsers=no
+            NotifyReady=yes
 
             [Network]
             Private=$private_network
