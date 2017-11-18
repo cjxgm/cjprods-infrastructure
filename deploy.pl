@@ -79,16 +79,56 @@ BEGIN {
     }
 }
 
+use Time::Piece;
 use sanity;
+use util;
 use util::system;
-sanity::check();
+use path;
+use deploy;
 
+sanity::check();
 util::system::install qw[
     arch-install-scripts
     gnupg
     btrfs-progs
     systemd
+    bash
 ];
+
+my $BAWN_ROOT = "/opt/bawn";
+my $DATA_ROOT = "/data";
+my $NSPAWN_ROOT = path::of_nspawn_dir();
+my $undeploy_script = "$BAWN_ROOT/undeploy.sh";
+
+my $template = "arch-" . localtime->ymd;
+$template .= "a" while -e path::of_machine($template);
+
+util::run("bash", $undeploy_script) if -f $undeploy_script;
+mkdir $BAWN_ROOT unless -d $BAWN_ROOT;
+mkdir $DATA_ROOT unless -d $DATA_ROOT;
+mkdir $NSPAWN_ROOT unless -d $NSPAWN_ROOT;
+
+print STDERR "\e[1;32mBootstrapping template...\e[0m\n";
+my $machine_tmpl = path::of_machine($template);
+my $nspawn_tmpl = path::of_nspawn($template);
+util::system::create_subvolume($machine_tmpl);
+util::spurt($nspawn_tmpl, util::system::nspawn_script());
+util::system::bootstrap($machine_tmpl, qw[systemd bash perl]);
+util::system::delete_subvolume(path::of_machine_dir($machine_tmpl));
+mkdir path::of_machine_dir($machine_tmpl);
+
+my %machines = (
+    acme => {
+        packages => [qw[nginx certbot certbot-nginx]],
+    },
+    coordinator => {
+        packages => [qw[nginx]],
+    },
+    ikiwiki => {
+        packages => [qw[nginx fcgi]],
+    },
+);
+deploy::machine($machine_tmpl, $_, $machines{$_}) for sort keys %machines;
 
 package sanity
 {
@@ -110,6 +150,23 @@ package sanity
 
         foolproof();
     }
+}
+
+package deploy
+{
+    sub machine($$$)
+    {
+        my ($tmpl_subvol, $name, $config) = @_;
+        print STDERR "\e[1;32mDeploying $name...\e[0m\n";
+    }
+}
+
+package path
+{
+    sub of_machine($@) { ($_[1] // "") . "/var/lib/machines/$_[0]" }
+    sub of_nspawn($@) { ($_[1] // "") . "/etc/systemd/nspawn/$_[0].nspawn" }
+    sub of_machine_dir(@) { ($_[0] // "") . "/var/lib/machines" }
+    sub of_nspawn_dir(@) { ($_[0] // "") . "/etc/systemd/nspawn" }
 }
 
 package util
@@ -150,6 +207,22 @@ package util
             die "Failed to run @_\n" if $? >= 256;
         }
     }
+
+    sub slurp(@)
+    {
+        return unless defined wantarray;
+        local @ARGV = @_;
+        local $/ unless wantarray;
+        <<>>;
+    }
+
+    sub spurt($@)
+    {
+        my ($path, @lines) = @_;
+        open my $fh, ">", $path;
+        my $lines = join "\n", @lines;
+        print $fh $lines;
+    }
 }
 
 package util::system
@@ -159,6 +232,41 @@ package util::system
     sub install(@)
     {
         util::run qw[pacman -S --needed], @_;
+    }
+
+    sub bootstrap($@)
+    {
+        my ($dir, @args) = @_;
+        util::run qw[pacstrap -cd], $dir, "--needed", @args;
+    }
+
+    sub create_subvolume($@)
+    {
+        my ($subvol, $snapshot) = @_;
+        if (defined $snapshot) {
+            util::run qw[btrfs sub snap], $snapshot, $subvol;
+        } else {
+            util::run qw[btrfs sub create], $subvol;
+        }
+    }
+
+    sub delete_subvolume($)
+    {
+        util::run qw[btrfs sub delete], $_[0];
+    }
+
+    sub nspawn_script(%)
+    {
+        my %opts = @_;
+        my $private_network = $opts{private_network} ? "Yes" : "No";
+        return <<~END;
+            [Exec]
+            Boot=yes
+            PrivateUsers=no
+
+            [Network]
+            Private=$private_network
+            END
     }
 }
 
